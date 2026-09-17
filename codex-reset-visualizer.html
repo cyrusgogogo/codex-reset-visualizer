@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codex 7 天重置机制 · 可视化模拟器</title>
+<style>
+:root{
+  --bg:#0b0e14; --panel:#12161f; --panel2:#171c27; --line:#262d3b; --line2:#313949;
+  --text:#e8edf5; --dim:#8b95a7; --dim2:#5d6779;
+  --blue:#4f8ff7; --orange:#f7a24f; --red:#e5534b; --green:#3fb950; --yellow:#d29922;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:28px 16px 64px;}
+.wrap{max-width:1140px;margin:0 auto}
+.mono{font-family:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace}
+
+/* ---------- header ---------- */
+h1{font-size:24px;font-weight:700;letter-spacing:.5px}
+.sub{color:var(--dim);margin-top:6px;font-size:14px}
+
+.answer{
+  margin-top:18px;padding:16px 18px;border-radius:12px;
+  background:linear-gradient(135deg,rgba(63,185,80,.10),rgba(79,143,247,.08));
+  border:1px solid rgba(63,185,80,.35);font-size:15px;line-height:1.75;
+}
+.answer b{color:var(--green)}
+.answer .hl{color:var(--orange);font-weight:700}
+
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.rule{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;font-size:13.5px;line-height:1.65;color:var(--dim)}
+.rule b{display:block;color:var(--text);margin-bottom:4px;font-size:14px}
+.rule .num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--line2);color:var(--text);font-size:12px;margin-right:6px}
+
+/* ---------- cards ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px}
+.card h2{font-size:15px;font-weight:600;color:var(--dim);letter-spacing:.5px;margin-bottom:12px;text-transform:uppercase}
+
+/* ---------- controls ---------- */
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px}
+.tabs{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.tab{border:none;background:transparent;color:var(--dim);font-size:13.5px;padding:7px 14px;border-radius:8px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--blue);color:#fff;font-weight:600}
+.ctrl-group{display:flex;align-items:center;gap:10px}
+.ctrl-label{color:var(--dim);font-size:13px;white-space:nowrap}
+input[type=range]{width:150px;accent-color:var(--blue);cursor:pointer}
+.seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+.seg button{border:none;background:transparent;color:var(--dim);font-size:12.5px;padding:5px 10px;border-radius:7px;cursor:pointer}
+.seg button.active{background:var(--line2);color:var(--text);font-weight:600}
+.btn{border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:13.5px;padding:8px 16px;border-radius:9px;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--blue);color:#fff}
+.btn.orange{background:var(--orange);border-color:var(--orange);color:#1a1206;font-weight:700}
+.btn.orange:hover{filter:brightness(1.1);color:#000}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.mode-hint{width:100%;color:var(--dim);font-size:13px;line-height:1.6;border-top:1px dashed var(--line);padding-top:10px}
+.mode-hint b{color:var(--orange)}
+
+/* ---------- gauge ---------- */
+.gauge-zone{display:grid;grid-template-columns:1.2fr 1fr;gap:20px}
+.gauge-wrap{position:relative}
+.gauge{position:relative;height:46px;background:#0e121b;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.gauge .fill{height:100%;width:100%;background:linear-gradient(90deg,#2ea043,#3fb950)}
+.gauge .fill.mid{background:linear-gradient(90deg,#bb8009,#d29922)}
+.gauge .fill.low{background:linear-gradient(90deg,#b33a34,#e5534b)}
+.gauge .gtext{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.gauge .gstate{position:absolute;left:0;right:0;top:58px;text-align:center;color:#ff9d96;font-size:13px;font-weight:600;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+.gfloat{position:absolute;top:0;transform:translate(-50%,0);font-weight:700;font-size:14px;pointer-events:none;animation:floatUp 1.2s ease forwards;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+@keyframes floatUp{to{transform:translate(-50%,-30px);opacity:0}}
+.gauge-cap{text-align:center;color:var(--dim2);font-size:12px;margin-top:24px}
+
+.win{margin-top:6px;position:relative;height:28px;background:#0e121b;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.win .wfill{height:100%;background:linear-gradient(90deg,rgba(79,143,247,.22),rgba(79,143,247,.55))}
+.win .wtext{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12.5px;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.win-labels{display:flex;justify-content:space-between;color:var(--dim);font-size:12.5px;margin-top:7px}
+.win.pulse{animation:winPulse .9s ease}
+@keyframes winPulse{0%{box-shadow:0 0 0 0 rgba(247,162,79,.75)}100%{box-shadow:0 0 0 16px rgba(247,162,79,0)}}
+
+/* ---------- timeline ---------- */
+.tl-head{display:flex;justify-content:space-between;align-items:center}
+.end-toast{display:none;color:var(--yellow);font-size:13px;font-weight:600}
+.tl-outer{overflow-x:auto;padding-bottom:4px}
+.tl-min{min-width:760px}
+.tl{position:relative;height:88px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;margin-top:12px}
+.tick{position:absolute;top:0;bottom:0;width:1px;background:#1b2130}
+.tick.week{width:0;border-left:1px dashed #3a4356}
+.band{position:absolute;top:34px;height:20px;background:repeating-linear-gradient(45deg,rgba(229,83,75,.38) 0 6px,rgba(229,83,75,.14) 6px 12px);border:1px solid rgba(229,83,75,.55);border-radius:4px}
+.plan{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--orange);opacity:.9;display:none}
+.plan .plabel{position:absolute;top:2px;left:4px;font-size:10.5px;color:var(--orange);white-space:nowrap}
+.tl.show-plan .plan{display:block}
+.flag{position:absolute;top:9px;width:13px;height:13px;transform:translateX(-50%);clip-path:polygon(0 0,100% 0,100% 65%,50% 100%,0 65%);animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+.flag.natural{background:var(--blue)}
+.flag.manual{background:var(--orange)}
+@keyframes pop{0%{transform:translateX(-50%) scale(0)}100%{transform:translateX(-50%) scale(1)}}
+.tl-cursor{position:absolute;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 10px rgba(255,255,255,.75);pointer-events:none}
+.tl-cursor i{position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#fff}
+.tl-scale{position:relative;height:22px;margin-top:5px}
+.tl-scale span{position:absolute;transform:translateX(-50%);color:var(--dim);font-size:12px}
+.shift{position:absolute;top:-25px;transform:translateX(-50%);background:var(--orange);color:#1a1206;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;transition:left .75s cubic-bezier(.3,.7,.3,1),opacity .35s;pointer-events:none;z-index:5}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:10px;color:var(--dim);font-size:12.5px;align-items:center}
+.lg{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+.sw.blue{background:var(--blue)} .sw.orange{background:var(--orange)}
+.sw.hatch{background:repeating-linear-gradient(45deg,rgba(229,83,75,.5) 0 3px,rgba(229,83,75,.15) 3px 6px);border:1px solid rgba(229,83,75,.55)}
+.sw.dashg{width:16px;height:0;border-top:2px dashed #3a4356;border-radius:0}
+.sw.dasho{width:16px;height:0;border-top:2px dashed var(--orange);border-radius:0}
+
+/* ---------- stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .v{font-size:22px;font-weight:700;font-family:ui-monospace,Consolas,monospace}
+.stat .k{color:var(--dim);font-size:12px;margin-top:3px}
+.stat.blue .v{color:var(--blue)} .stat.green .v{color:var(--green)} .stat.red .v{color:var(--red)}
+.stat.orange .v{color:var(--orange)} .stat.yellow .v{color:var(--yellow)}
+
+/* ---------- comparison ---------- */
+.cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:4px}
+.cmp-card{position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:16px 17px;overflow:hidden}
+.cmp-card.rec{border-color:var(--green);box-shadow:0 0 0 1px var(--green),0 6px 24px rgba(63,185,80,.12)}
+.ribbon{position:absolute;top:12px;right:-30px;background:var(--green);color:#06130a;font-size:11.5px;font-weight:800;padding:3px 36px;transform:rotate(38deg)}
+.cmp-name{font-size:15px;font-weight:700}
+.cmp-desc{color:var(--dim);font-size:12.5px;margin-top:3px;min-height:34px;line-height:1.5}
+.cmp-big{font-size:34px;font-weight:800;font-family:ui-monospace,Consolas,monospace;margin-top:6px}
+.cmp-big span{font-size:14px;color:var(--dim);font-weight:500;margin-left:3px}
+.cmp-big-label{color:var(--dim);font-size:12px;margin-bottom:8px}
+.bar{height:7px;background:#0e121b;border-radius:5px;overflow:hidden;margin:7px 0 12px}
+.bar i{display:block;height:100%;border-radius:5px;transition:width .6s ease}
+.bar.b-block i{background:var(--red)}
+.bar.b-waste i{background:var(--yellow)}
+.cmp-row{display:flex;justify-content:space-between;font-size:13px;color:var(--dim)}
+.cmp-row b{color:var(--text);font-family:ui-monospace,Consolas,monospace}
+.cmp-foot{border-top:1px dashed var(--line);margin-top:11px;padding-top:9px;font-size:12px;color:var(--dim2);line-height:1.7}
+
+/* ---------- verdict ---------- */
+.verdict{border-left:4px solid var(--green);line-height:1.9;font-size:14.5px}
+.verdict .ok{color:var(--green);font-weight:700}
+.verdict .bad{color:var(--red);font-weight:700}
+.verdict .key{color:var(--orange);font-weight:700}
+
+.footer{margin-top:26px;color:var(--dim2);font-size:12.5px;text-align:center;line-height:1.8}
+kbd{background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11.5px;font-family:ui-monospace,monospace}
+
+@media (max-width:960px){
+  .gauge-zone{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(3,1fr)}
+  .cmp{grid-template-columns:1fr}
+  .rules{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Codex 7 天重置机制 · 可视化模拟器</h1>
+  <div class="sub">规则：额度每 7 天重置一次；中途手动重置 → 下次重置时间顺延为「当前时刻 + 7 天」。用动画看清两种情况下到底发生了什么。</div>
+
+  <div class="answer">
+    <b>一句话策略：</b>如果你 <span class="hl">7 天内能把额度用完</span>（重度用户）—— 额度一清零就<b>立刻手动重置</b>，「顺延 7 天」不是惩罚，干等才是唯一的损失；
+    如果你 <span class="hl">7 天用不完</span>（轻度用户）—— 什么都不用做，安心等自然重置即可。
+  </div>
+
+  <div class="rules">
+    <div class="rule"><b><span class="num">1</span>周期重置</b>每 7 天重置一次，额度恢复至 100。</div>
+    <div class="rule"><b><span class="num">2</span>中途手动重置</b>立即恢复至 100，但下次重置时间顺延为「当前时刻 + 7 天」，整个后续日程跟着平移。</div>
+    <div class="rule"><b><span class="num">3</span>不累计</b>任何重置都会清零当前未用完的额度，剩余量不会滚入下一周期。</div>
+  </div>
+
+  <div class="controls">
+    <div class="tabs">
+      <button class="tab active" data-mode="normal">正常情况（不手动重置）</button>
+      <button class="tab" data-mode="auto">重置情况（用完立即重置）</button>
+      <button class="tab" data-mode="sandbox">自由实验（你来按）</button>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">使用强度：约 <b class="mono" id="burnVal">4</b> 天用完 100 额度</span>
+      <input type="range" id="burnSlider" min="2" max="10" step="1" value="4">
+      <span class="ctrl-label" id="burnNote" style="color:var(--yellow)"></span>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">速度</span>
+      <div class="seg" id="speedSeg">
+        <button data-speed="1">1x</button>
+        <button data-speed="2" class="active">2x</button>
+        <button data-speed="4">4x</button>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <button class="btn" id="playBtn">暂停</button>
+      <button class="btn" id="restartBtn">↻ 重新模拟</button>
+      <button class="btn orange" id="manualBtn" style="display:none">立即手动重置</button>
+    </div>
+    <div class="mode-hint" id="modeHint"></div>
+  </div>
+
+  <div class="card">
+    <h2>当前状态</h2>
+    <div class="gauge-zone">
+      <div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <div class="fill" id="quotaFill"></div>
+            <div class="gtext mono" id="quotaText">100 / 100</div>
+          </div>
+          <div class="gstate" id="gaugeState"></div>
+        </div>
+        <div class="gauge-cap">当前剩余额度</div>
+      </div>
+      <div>
+        <div class="win" id="winBar">
+          <div class="wfill" id="winFill"></div>
+          <div class="wtext" id="winText"></div>
+        </div>
+        <div class="win-labels">
+          <span>本周期开始：<b class="mono" id="winStart">第 0 天</b></span>
+          <span>下次重置：<b class="mono" id="winEnd">第 7 天</b>（还剩 <b class="mono" id="winLeft">7.0</b> 天）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tl-head">
+      <h2>28 天全景时间轴</h2>
+      <div class="end-toast" id="endToast">28 天模拟结束 · 点击「↻ 重新模拟」再来一遍</div>
+    </div>
+    <div class="tl-outer"><div class="tl-min">
+      <div class="tl" id="timeline">
+        <div id="tlGrid"></div>
+        <div id="tlBands"></div>
+        <div class="plan" id="plan0"><span class="plabel">当前计划重置点</span></div>
+        <div class="plan" id="plan1"></div>
+        <div class="plan" id="plan2"></div>
+        <div id="tlFlags"></div>
+        <div class="tl-cursor" id="tlCursor"><i></i></div>
+        <div id="tlBadges"></div>
+      </div>
+      <div class="tl-scale" id="tlScale"></div>
+      <div class="legend">
+        <span class="lg"><i class="sw blue"></i>自然重置（旗子）</span>
+        <span class="lg"><i class="sw orange"></i>手动重置（旗子）</span>
+        <span class="lg"><i class="sw hatch"></i>受限期：额度为 0，只能干等</span>
+        <span class="lg"><i class="sw dashg"></i>原计划重置点（7 的倍数）</span>
+        <span class="lg"><i class="sw dasho"></i>顺延后的当前计划重置点</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat blue"><div class="v" id="stGranted">100</div><div class="k">已获得总额度</div></div>
+    <div class="stat green"><div class="v" id="stConsumed">0</div><div class="k">实际已使用</div></div>
+    <div class="stat yellow"><div class="v" id="stWasted">0</div><div class="k">重置时被清零（浪费）</div></div>
+    <div class="stat red"><div class="v" id="stBlocked">0.0</div><div class="k">受限天数（额度=0）</div></div>
+    <div class="stat orange"><div class="v" id="stManual">0</div><div class="k">手动重置次数</div></div>
+    <div class="stat"><div class="v" id="stNatural">0</div><div class="k">自然重置次数</div></div>
+  </div>
+
+  <div class="card">
+    <h2>三种策略对比 · 28 天瞬时模拟</h2>
+    <div class="cmp" id="cmpCards"></div>
+  </div>
+
+  <div class="card verdict" id="verdict"></div>
+
+  <div class="footer">
+    快捷键：<kbd>空格</kbd> 播放/暂停 · <kbd>R</kbd> 自由实验模式下手动重置<br>
+    本页面按「7 天重置一次、中途重置则顺延为当前+7 天、剩余不累计」的规则制作，用于直观理解机制。
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const DAYS = 28, CYCLE = 7, QUOTA = 100, SECS_PER_DAY = 1.0;
+const $ = id => document.getElementById(id);
+const x = day => (day / DAYS * 100);
+
+const state = {
+  mode:'normal', burnDays:4, speed:2, playing:true, ended:false,
+  t:0, quota:QUOTA, windowStart:0, nextReset:CYCLE,
+  blocked:false, blockStartT:null,
+  stats:null
+};
+
+const els = {
+  burnSlider:$('burnSlider'), burnVal:$('burnVal'), burnNote:$('burnNote'),
+  playBtn:$('playBtn'), restartBtn:$('restartBtn'), manualBtn:$('manualBtn'),
+  modeHint:$('modeHint'),
+  quotaFill:$('quotaFill'), quotaText:$('quotaText'), gaugeState:$('gaugeState'),
+  winBar:$('winBar'), winFill:$('winFill'), winText:$('winText'),
+  winStart:$('winStart'), winEnd:$('winEnd'), winLeft:$('winLeft'),
+  timeline:$('timeline'), tlGrid:$('tlGrid'), tlBands:$('tlBands'), tlFlags:$('tlFlags'),
+  tlBadges:$('tlBadges'), tlCursor:$('tlCursor'), tlScale:$('tlScale'), endToast:$('endToast'),
+  plans:[$('plan0'),$('plan1'),$('plan2')],
+  stGranted:$('stGranted'), stConsumed:$('stConsumed'), stWasted:$('stWasted'),
+  stBlocked:$('stBlocked'), stManual:$('stManual'), stNatural:$('stNatural'),
+  cmpCards:$('cmpCards'), verdict:$('verdict')
+};
+
+const HINTS = {
+  normal:'<b>正常情况：</b>全程不手动重置。观察额度用完后进入红色受限期，只能干等到下一次自然重置。',
+  auto:'<b>重置情况：</b>额度归零的瞬间自动手动重置。观察额度立刻回满，且右侧时间轴上橙色「当前计划重置点」从重置时刻起整体顺延 7 天。',
+  sandbox:'<b>自由实验：</b>模拟运行中随时点击「立即手动重置」（或按 R）。试试在有剩余时重置 —— 观察剩余额度被清空、计划线顺延。'
+};
+
+let currentBand = null;
+
+/* ---------- timeline static build ---------- */
+(function buildTimeline(){
+  for(let d=0; d<=DAYS; d++){
+    const t = document.createElement('div');
+    t.className = 'tick' + (d % CYCLE === 0 ? ' week' : '');
+    t.style.left = x(d) + '%';
+    els.tlGrid.appendChild(t);
+  }
+  for(let d=0; d<=DAYS; d+=CYCLE){
+    const s = document.createElement('span');
+    s.style.left = x(d) + '%';
+    s.textContent = '第' + d + '天';
+    els.tlScale.appendChild(s);
+  }
+})();
+
+const ratePerDay = () => QUOTA / state.burnDays;
+
+/* ---------- sim core ---------- */
+function consumeStep(dt){
+  if(state.quota <= 0){ state.stats.blockedDays += dt; return; }
+  const got = Math.min(ratePerDay() * dt, state.quota);
+  state.quota -= got;
+  state.stats.consumed += got;
+}
+
+function advance(dtDays){
+  let rem = dtDays;
+  while(rem > 1e-9 && state.t < DAYS){
+    let step = Math.min(rem, 0.01);
+    if(state.t + step >= state.nextReset){
+      step = state.nextReset - state.t;
+      consumeStep(step);
+      state.t = state.nextReset;
+      rem -= step;
+      naturalReset();
+      continue;
+    }
+    consumeStep(step);
+    state.t += step;
+    rem -= step;
+    if(state.quota <= 1e-9){
+      state.quota = 0;
+      if(state.mode === 'auto') manualReset('auto');
+      else if(!state.blocked) enterBlocked();
+    }
+  }
+  if(state.t >= DAYS && !state.ended){
+    state.ended = true;
+    state.playing = false;
+    els.endToast.style.display = 'block';
+    els.playBtn.textContent = '重新播放';
+    updateManualBtn();
+  }
+}
+
+function naturalReset(){
+  state.stats.wasted += state.quota;
+  state.quota = QUOTA;
+  state.stats.granted += QUOTA;
+  state.stats.natural++;
+  state.windowStart = state.nextReset;
+  state.nextReset += CYCLE;
+  exitBlocked();
+  addFlag(state.windowStart, 'natural');
+  updatePlan();
+  pulseWindow();
+}
+
+function manualReset(src){
+  const oldNext = state.nextReset;
+  const leftover = state.quota;
+  state.stats.wasted += leftover;
+  state.quota = QUOTA;
+  state.stats.granted += QUOTA;
+  state.stats.manual++;
+  state.windowStart = state.t;
+  state.nextReset = state.t + CYCLE;
+  exitBlocked();
+  addFlag(state.t, 'manual');
+  updatePlan();
+  shiftBadge(oldNext, state.nextReset);
+  if(src === 'user'){
+    if(leftover >= 99.5)      floatGauge('额度本来就是满的 · 重置无意义', '#8b95a7');
+    else if(leftover > 0.5)   floatGauge('-' + Math.round(leftover) + ' 剩余额度被清零', '#e5534b');
+    else                      floatGauge('+100 额度回满', '#3fb950');
+  }else{
+    floatGauge('额度用完 → 立即重置 +100', '#f7a24f');
+  }
+  pulseWindow();
+}
+
+function enterBlocked(){
+  state.blocked = true;
+  state.blockStartT = state.t;
+  const el = document.createElement('div');
+  el.className = 'band';
+  el.style.left = x(state.t) + '%';
+  el.style.width = '0%';
+  els.tlBands.appendChild(el);
+  currentBand = el;
+}
+
+function exitBlocked(){
+  if(!state.blocked) return;
+  state.blocked = false;
+  if(currentBand) currentBand.style.width = Math.max(0, x(state.t - state.blockStartT)) + '%';
+  currentBand = null;
+}
+
+/* ---------- timeline visuals ---------- */
+function addFlag(day, kind, label){
+  const el = document.createElement('div');
+  el.className = 'flag ' + kind;
+  el.style.left = x(day) + '%';
+  el.title = (label || (kind === 'manual' ? '手动重置' : '自然重置')) + ' · 第 ' + day.toFixed(1) + ' 天';
+  els.tlFlags.appendChild(el);
+}
+
+function updatePlan(){
+  for(let i=0; i<3; i++){
+    const day = state.nextReset + i * CYCLE;
+    const el = els.plans[i];
+    if(day <= DAYS + 1e-6){
+      el.style.left = x(day) + '%';
+      el.style.visibility = 'visible';
+    }else{
+      el.style.visibility = 'hidden';
+    }
+  }
+}
+
+function shiftBadge(oldNext, newNext){
+  const shift = newNext - oldNext;
+  if(shift < 0.05) return;
+  const el = document.createElement('div');
+  el.className = 'shift';
+  el.textContent = '顺延 +' + shift.toFixed(1) + ' 天 →';
+  el.style.left = x(oldNext) + '%';
+  els.tlBadges.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.left = x(newNext) + '%';
+  }));
+  setTimeout(() => { el.style.opacity = '0'; }, 1000);
+  setTimeout(() => { el.remove(); }, 1500);
+}
+
+function floatGauge(text, color){
+  const wrap = els.quotaFill.parentElement.parentElement;
+  const el = document.createElement('div');
+  el.className = 'gfloat';
+  el.style.color = color;
+  el.style.left = '50%';
+  el.textContent = text;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 1250);
+}
+
+function pulseWindow(){
+  els.winBar.classList.remove('pulse');
+  void els.winBar.offsetWidth;
+  els.winBar.classList.add('pulse');
+}
+
+/* ---------- render ---------- */
+function render(){
+  const pct = Math.max(0, state.quota);
+  els.quotaFill.style.width = pct + '%';
+  els.quotaFill.className = 'fill' + (pct <= 20 ? ' low' : pct <= 50 ? ' mid' : '');
+  els.quotaText.textContent = Math.round(pct) + ' / 100';
+  els.gaugeState.textContent = state.blocked
+    ? '额度已耗尽 · 等待第 ' + state.nextReset.toFixed(1) + ' 天自然重置…'
+    : '';
+
+  const winLen = Math.max(1e-6, state.nextReset - state.windowStart);
+  const prog = Math.min(1, Math.max(0, (state.t - state.windowStart) / winLen));
+  els.winFill.style.width = (prog * 100) + '%';
+  els.winText.textContent = '本周期已过 ' + Math.round(prog * 100) + '%';
+  els.winStart.textContent = '第 ' + state.windowStart.toFixed(1) + ' 天';
+  els.winEnd.textContent = '第 ' + state.nextReset.toFixed(1) + ' 天';
+  els.winLeft.textContent = Math.max(0, state.nextReset - state.t).toFixed(1);
+
+  els.tlCursor.style.left = x(Math.min(state.t, DAYS)) + '%';
+  if(state.blocked && currentBand){
+    currentBand.style.width = Math.max(0, x(state.t - state.blockStartT)) + '%';
+  }
+
+  const s = state.stats;
+  els.stGranted.textContent = Math.round(s.granted);
+  els.stConsumed.textContent = Math.round(s.consumed);
+  els.stWasted.textContent = Math.round(s.wasted);
+  els.stBlocked.textContent = s.blockedDays.toFixed(1);
+  els.stManual.textContent = s.manual;
+  els.stNatural.textContent = s.natural;
+}
+
+/* ---------- reset / controls ---------- */
+function resetSim(){
+  state.t = 0; state.quota = QUOTA; state.windowStart = 0; state.nextReset = CYCLE;
+  state.blocked = false; state.blockStartT = null; currentBand = null;
+  state.stats = {granted:QUOTA, consumed:0, wasted:0, blockedDays:0, manual:0, natural:0};
+  state.playing = true; state.ended = false;
+  els.tlFlags.innerHTML = '';
+  els.tlBands.innerHTML = '';
+  els.tlBadges.innerHTML = '';
+  els.endToast.style.display = 'none';
+  els.playBtn.textContent = '暂停';
+  addFlag(0, 'natural', '初始额度');
+  updatePlan();
+  updateManualBtn();
+  render();
+}
+
+function updateManualBtn(){
+  const show = state.mode === 'sandbox';
+  els.manualBtn.style.display = show ? '' : 'none';
+  els.manualBtn.disabled = !show || state.ended;
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.mode = tab.dataset.mode;
+    els.modeHint.innerHTML = HINTS[state.mode];
+    els.timeline.classList.toggle('show-plan', state.mode !== 'normal');
+    resetSim();
+  });
+});
+
+els.burnSlider.addEventListener('input', () => {
+  state.burnDays = +els.burnSlider.value;
+  els.burnVal.textContent = state.burnDays;
+  els.burnNote.textContent = state.burnDays >= 7 ? '（轻度使用：到期前用不完）' : '';
+  resetSim();
+  renderComparison();
+});
+
+document.querySelectorAll('#speedSeg button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#speedSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.speed = +b.dataset.speed;
+  });
+});
+
+els.playBtn.addEventListener('click', () => {
+  if(state.ended){ resetSim(); return; }
+  state.playing = !state.playing;
+  els.playBtn.textContent = state.playing ? '暂停' : '继续';
+});
+els.restartBtn.addEventListener('click', resetSim);
+els.manualBtn.addEventListener('click', () => {
+  if(state.mode === 'sandbox' && !state.ended && state.t < DAYS) manualReset('user');
+});
+
+document.addEventListener('keydown', e => {
+  if(e.code === 'Space' && e.target === document.body){
+    e.preventDefault();
+    els.playBtn.click();
+  }else if(e.key === 'r' || e.key === 'R'){
+    if(state.mode === 'sandbox' && !state.ended) manualReset('user');
+  }
+});
+
+/* ---------- instant 28-day strategy comparison ---------- */
+function simulate(strategy, burnDays){
+  const rate = QUOTA / burnDays;
+  let t = 0, quota = QUOTA, nextReset = CYCLE, lastManual = 0;
+  let granted = QUOTA, consumed = 0, wasted = 0, blocked = 0, manual = 0, natural = 0;
+  const dt = 0.002;
+  let guard = 0;
+  while(t < DAYS && guard++ < 1e7){
+    if(t >= nextReset - 1e-12){
+      natural++; granted += QUOTA; wasted += quota; quota = QUOTA; nextReset += CYCLE;
+    }
+    if(strategy === 'every2' && t > 0 && t - lastManual >= 2){
+      manual++; granted += QUOTA; wasted += quota; quota = QUOTA; lastManual = t; nextReset = t + CYCLE;
+    }
+    if(quota <= 1e-9){
+      if(strategy === 'onEmpty'){
+        manual++; granted += QUOTA; quota = QUOTA; lastManual = t; nextReset = t + CYCLE;
+      }else{
+        blocked += dt; t += dt; continue;
+      }
+    }
+    const got = Math.min(rate * dt, quota);
+    quota -= got; consumed += got; t += dt;
+  }
+  return {granted, consumed, wasted, blocked, manual, natural};
+}
+
+const STRATS = [
+  {key:'never',   name:'从不手动重置',   desc:'额度用完就干等 7 天自然重置'},
+  {key:'onEmpty', name:'用完立即重置',   desc:'额度一清零就立刻手动重置'},
+  {key:'every2',  name:'每 2 天就重置',  desc:'没用完也频繁提前重置'}
+];
+
+function renderComparison(){
+  const results = STRATS.map(s => simulate(s.key, state.burnDays));
+  const heavy = state.burnDays < 7;
+  const recKey = heavy ? 'onEmpty' : 'never';
+  const maxBlocked = Math.max(...results.map(r => r.blocked), 0.1);
+  const maxWasted  = Math.max(...results.map(r => r.wasted), 0.1);
+
+  els.cmpCards.innerHTML = STRATS.map((s, i) => {
+    const r = results[i];
+    const rec = s.key === recKey;
+    return `
+    <div class="cmp-card ${rec ? 'rec' : ''}">
+      ${rec ? '<div class="ribbon">推荐</div>' : ''}
+      <div class="cmp-name">${s.name}</div>
+      <div class="cmp-desc">${s.desc}</div>
+      <div class="cmp-big" style="color:${r.blocked > 0.05 ? 'var(--red)' : 'var(--green)'}">${r.blocked.toFixed(1)}<span>天</span></div>
+      <div class="cmp-big-label">受限时间（额度 = 0）</div>
+      <div class="bar b-block"><i style="width:${(r.blocked / maxBlocked * 100).toFixed(1)}%"></i></div>
+      <div class="cmp-row"><span>重置时被清零的额度（浪费）</span><b>${Math.round(r.wasted)}</b></div>
+      <div class="bar b-waste"><i style="width:${(r.wasted / maxWasted * 100).toFixed(1)}%"></i></div>
+      <div class="cmp-foot">
+        28 天共获得 <b class="mono">${Math.round(r.granted)}</b> 额度 · 实际使用 <b class="mono">${Math.round(r.consumed)}</b><br>
+        重置 ${r.manual + r.natural} 次（手动 ${r.manual} / 自然 ${r.natural}）
+      </div>
+    </div>`;
+  }).join('');
+
+  renderVerdict(results[0], results[1], results[2], heavy);
+}
+
+function renderVerdict(a, b, c, heavy){
+  if(heavy){
+    els.verdict.innerHTML = `
+      <b>结论（按你当前的使用强度：约 ${state.burnDays} 天用完 100 额度）</b><br>
+      <span class="ok">最优：「用完立即重置」</span> —— 28 天实际可用 <b class="mono">${Math.round(b.consumed)}</b> 额度、受限 0 天、浪费 0。<br>
+      <span class="bad">干等自然重置：</span>同样强度下 28 天里有 <b class="mono">${a.blocked.toFixed(1)}</b> 天额度为 0，少获得 <b class="mono">${Math.round(b.granted - a.granted)}</b> 额度 —— 等待是纯损失。<br>
+      <span class="bad">提前频繁重置：</span>可用额度并没有变多，却白白扔掉 <b class="mono">${Math.round(c.wasted)}</b> 剩余额度 —— 提前重置零收益。<br>
+      关键点：<span class="key">「下次重置顺延 7 天」不是惩罚，而是新周期的开始</span> —— 到期前如果又用完，再重置一次即可。所以最佳动作只有一个：<span class="key">额度见底就立刻重置，没见底就安心用着</span>。`;
+  }else{
+    els.verdict.innerHTML = `
+      <b>结论（按你当前的使用强度：约 ${state.burnDays} 天用完 100 额度）</b><br>
+      你的使用强度低于 7 天重置周期 —— 额度在到期前<span class="key">根本用不完</span>，自然重置时剩余部分本来也会清零。<br>
+      <span class="ok">最佳策略：什么都不用做</span>，安心等 7 天自然重置即可，手动重置对你没有任何价值。
+      把左侧「使用强度」滑块调到 7 天以下，看看重度用户的世界。`;
+  }
+}
+
+/* ---------- main loop ---------- */
+let last = performance.now();
+function frame(now){
+  const dtReal = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if(state.playing) advance(dtReal * state.speed / SECS_PER_DAY);
+  render();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- boot ---------- */
+els.modeHint.innerHTML = HINTS.normal;
+resetSim();
+renderComparison();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
